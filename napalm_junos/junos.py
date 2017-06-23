@@ -82,6 +82,10 @@ class JunOSDriver(NetworkDriver):
         self.key_file = optional_args.get('key_file', None)
         self.keepalive = optional_args.get('keepalive', 30)
         self.ssh_config_file = optional_args.get('ssh_config_file', None)
+        self.rest = optional_args.get('rest', False)
+        self.ssl_verify = optional_args.get('ssl_verify', True)
+        self.schema = optional_args.get('schema', 'https')
+        # self.path = optional_args.get('path', '/rpc')
 
         if self.key_file:
             self.device = Device(hostname,
@@ -94,7 +98,11 @@ class JunOSDriver(NetworkDriver):
                                  user=username,
                                  password=password,
                                  port=self.port,
-                                 ssh_config=self.ssh_config_file)
+                                 ssh_config=self.ssh_config_file,
+                                 rest = self.rest,
+                                 ssl_verify = self.ssl_verify,
+                                 schema = self.schema)
+
 
         self.profile = ["junos"]
 
@@ -105,7 +113,8 @@ class JunOSDriver(NetworkDriver):
         except ConnectTimeoutError as cte:
             raise ConnectionException(cte.message)
         self.device.timeout = self.timeout
-        self.device._conn._session.transport.set_keepalive(self.keepalive)
+        if not self.rest:
+            self.device._conn._session.transport.set_keepalive(self.keepalive)
         if hasattr(self.device, "cu"):
             # make sure to remove the cu attr from previous session
             # ValueError: requested attribute name cu already exists
@@ -152,6 +161,10 @@ class JunOSDriver(NetworkDriver):
     def is_alive(self):
         # evaluate the state of the underlying SSH connection
         # and also the NETCONF status from PyEZ
+        if self.rest:
+            return {
+                'is_alive': self.device._conn.connected
+            }
         return {
             'is_alive': self.device._conn._session.transport.is_active() and self.device.connected
         }
@@ -253,7 +266,7 @@ class JunOSDriver(NetworkDriver):
         output = self.device.facts
 
         uptime = '0'
-        if 'RE0' in output:
+        if output != None and 'RE0' in output and output['RE0'] != None and 'up_time' in output['RE0']:
             uptime = output['RE0']['up_time']
 
         interfaces = junos_views.junos_iface_table(self.device)
